@@ -69,7 +69,7 @@ QrCode QrCode::encodeSegments(const vector<QrSegment> &segs, Ecc ecl,
 	// Find the minimal version number to use
 	int version, dataUsedBits;
 	for (version = minVersion; ; version++) {
-		int dataCapacityBits = getNumDataCodewords(version, ecl) * 8;  // Number of data bits available
+		int dataCapacityBits = getNumDataCodewords({false, version}, ecl) * 8;  // Number of data bits available
 		dataUsedBits = QrSegment::getTotalBits(segs, version);
 		if (dataUsedBits != -1 && dataUsedBits <= dataCapacityBits)
 			break;  // This version number is found to be suitable
@@ -89,7 +89,7 @@ QrCode QrCode::encodeSegments(const vector<QrSegment> &segs, Ecc ecl,
 	
 	// Increase the error correction level while the data still fits in the current version number
 	for (Ecc newEcl : vector<Ecc>{Ecc::MEDIUM, Ecc::QUARTILE, Ecc::HIGH}) {  // From low to high
-		if (boostEcl && dataUsedBits <= getNumDataCodewords(version, newEcl) * 8)
+		if (boostEcl && dataUsedBits <= getNumDataCodewords({false, version}, newEcl) * 8)
 			ecl = newEcl;
 	}
 	
@@ -104,7 +104,7 @@ QrCode QrCode::encodeSegments(const vector<QrSegment> &segs, Ecc ecl,
 		throw std::logic_error("Assertion error");
 	
 	// Add terminator and pad up to a byte if applicable
-	size_t dataCapacityBits = static_cast<size_t>(getNumDataCodewords(version, ecl)) * 8;
+	size_t dataCapacityBits = static_cast<size_t>(getNumDataCodewords({false, version}, ecl)) * 8;
 	if (bb.size() > dataCapacityBits)
 		throw std::logic_error("Assertion error");
 	bb.appendBits(0, std::min(4, static_cast<int>(dataCapacityBits - bb.size())));
@@ -122,19 +122,19 @@ QrCode QrCode::encodeSegments(const vector<QrSegment> &segs, Ecc ecl,
 		dataCodewords[i >> 3] |= (bb.at(i) ? 1 : 0) << (7 - (i & 7));
 	
 	// Create the QR Code object
-	return QrCode(version, ecl, dataCodewords, mask);
+	return QrCode({false, version}, ecl, dataCodewords, mask);
 }
 
 
-QrCode::QrCode(int ver, Ecc ecl, const vector<uint8_t> &dataCodewords, int msk) :
+QrCode::QrCode(Version ver, Ecc ecl, const vector<uint8_t> &dataCodewords, int msk) :
 		// Initialize fields and check arguments
 		version(ver),
 		errorCorrectionLevel(ecl) {
-	if (ver < MIN_VERSION || ver > MAX_VERSION)
+	if (!ver.wide && (ver.version < MIN_VERSION || ver.version > MAX_VERSION))
 		throw std::domain_error("Version value out of range");
 	if (msk < -1 || msk > 7)
 		throw std::domain_error("Mask value out of range");
-	size = ver * 4 + 17;
+	size = ver.version * 4 + 17;
 	size_t sz = static_cast<size_t>(size);
 	modules    = vector<vector<bool> >(sz, vector<bool>(sz));  // Initially all white
 	isFunction = vector<vector<bool> >(sz, vector<bool>(sz));
@@ -170,7 +170,7 @@ QrCode::QrCode(int ver, Ecc ecl, const vector<uint8_t> &dataCodewords, int msk) 
 
 
 int QrCode::getVersion() const {
-	return version;
+	return version.version;
 }
 
 
@@ -280,14 +280,14 @@ void QrCode::drawFormatBits(int msk) {
 
 
 void QrCode::drawVersion() {
-	if (version < 7)
+	if (version.version < 7)
 		return;
 	
 	// Calculate error correction code and pack bits
-	int rem = version;  // version is uint6, in the range [7, 40]
+	int rem = version.version;  // version is uint6, in the range [7, 40]
 	for (int i = 0; i < 12; i++)
 		rem = (rem << 1) ^ ((rem >> 11) * 0x1F25);
-	long bits = static_cast<long>(version) << 12 | rem;  // uint18
+	long bits = static_cast<long>(version.version) << 12 | rem;  // uint18
 	if (bits >> 18 != 0)
 		throw std::logic_error("Assertion error");
 	
@@ -340,8 +340,8 @@ vector<uint8_t> QrCode::addEccAndInterleave(const vector<uint8_t> &data) const {
 		throw std::invalid_argument("Invalid argument");
 	
 	// Calculate parameter numbers
-	int numBlocks = NUM_ERROR_CORRECTION_BLOCKS[static_cast<int>(errorCorrectionLevel)][version];
-	int blockEccLen = ECC_CODEWORDS_PER_BLOCK  [static_cast<int>(errorCorrectionLevel)][version];
+	int numBlocks = NumErrorCorrectionBlocks(errorCorrectionLevel, version);
+	int blockEccLen = ECCCodeworksPerBlock(errorCorrectionLevel, version);
 	int rawCodewords = getNumRawDataModules(version) / 8;
 	int numShortBlocks = numBlocks - rawCodewords % numBlocks;
 	int shortBlockLen = rawCodewords / numBlocks;
@@ -506,41 +506,49 @@ long QrCode::getPenaltyScore() const {
 
 
 vector<int> QrCode::getAlignmentPatternPositions() const {
-	if (version == 1)
-		return vector<int>();
-	else {
-		int numAlign = version / 7 + 2;
-		int step = (version == 32) ? 26 :
-			(version*4 + numAlign*2 + 1) / (numAlign*2 - 2) * 2;
-		vector<int> result;
-		for (int i = 0, pos = size - 7; i < numAlign - 1; i++, pos -= step)
-			result.insert(result.begin(), pos);
-		result.insert(result.begin(), 6);
+	if (version.wide) {
+		throw std::logic_error("unimplemented");
+	} else {
+		if (version.version == 1)
+			return vector<int>();
+		else {
+			int numAlign = version.version / 7 + 2;
+			int step = (version.version == 32) ? 26 :
+				(version.version*4 + numAlign*2 + 1) / (numAlign*2 - 2) * 2;
+			vector<int> result;
+			for (int i = 0, pos = size - 7; i < numAlign - 1; i++, pos -= step)
+				result.insert(result.begin(), pos);
+			result.insert(result.begin(), 6);
+			return result;
+		}
+	}
+}
+
+
+int QrCode::getNumRawDataModules(Version ver) {
+	if (ver.wide) {
+		throw std::logic_error("unimplemented");
+	} else {
+		if (ver.version < MIN_VERSION || ver.version > MAX_VERSION)
+			throw std::domain_error("Version number out of range");
+		int result = (16 * ver.version + 128) * ver.version + 64;
+		if (ver.version >= 2) {
+			int numAlign = ver.version / 7 + 2;
+			result -= (25 * numAlign - 10) * numAlign - 55;
+			if (ver.version >= 7)
+				result -= 36;
+		}
+		if (!(208 <= result && result <= 29648))
+			throw std::logic_error("Assertion error");
 		return result;
 	}
 }
 
 
-int QrCode::getNumRawDataModules(int ver) {
-	if (ver < MIN_VERSION || ver > MAX_VERSION)
-		throw std::domain_error("Version number out of range");
-	int result = (16 * ver + 128) * ver + 64;
-	if (ver >= 2) {
-		int numAlign = ver / 7 + 2;
-		result -= (25 * numAlign - 10) * numAlign - 55;
-		if (ver >= 7)
-			result -= 36;
-	}
-	if (!(208 <= result && result <= 29648))
-		throw std::logic_error("Assertion error");
-	return result;
-}
-
-
-int QrCode::getNumDataCodewords(int ver, Ecc ecl) {
+int QrCode::getNumDataCodewords(Version ver, Ecc ecl) {
 	return getNumRawDataModules(ver) / 8
-		- ECC_CODEWORDS_PER_BLOCK    [static_cast<int>(ecl)][ver]
-		* NUM_ERROR_CORRECTION_BLOCKS[static_cast<int>(ecl)][ver];
+		- ECCCodeworksPerBlock(ecl, ver)
+		* NumErrorCorrectionBlocks(ecl, ver);
 }
 
 
@@ -627,6 +635,23 @@ bool QrCode::getBit(long x, int i) {
 }
 
 
+int QrCode::ECCCodeworksPerBlock(Ecc ecc, Version ver) {
+	if (ver.wide) {
+		return WIDE_ECC_CODEWORKS_PER_BLOCK;
+	} else {
+		return ECC_CODEWORDS_PER_BLOCK[static_cast<int>(ecc)][ver.version];
+	}
+}
+
+int QrCode::NumErrorCorrectionBlocks(Ecc ecc, Version ver) {
+	if (ver.wide) {
+		return WIDE_NUM_ERROR_CORRECTION_BLOCKS;
+	} else {
+		return NUM_ERROR_CORRECTION_BLOCKS[static_cast<int>(ecc)][ver.version];
+	}
+}
+
+
 /*---- Tables of constants ----*/
 
 const int QrCode::PENALTY_N1 =  3;
@@ -651,6 +676,14 @@ const int8_t QrCode::NUM_ERROR_CORRECTION_BLOCKS[4][41] = {
 	{-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5,  5,  8,  9,  9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49},  // Medium
 	{-1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8,  8, 10, 12, 16, 12, 17, 16, 18, 21, 20, 23, 23, 25, 27, 29, 34, 34, 35, 38, 40, 43, 45, 48, 51, 53, 56, 59, 62, 65, 68},  // Quartile
 	{-1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45, 48, 51, 54, 57, 60, 63, 66, 70, 74, 77, 81},  // High
+};
+
+const vector<int> QrCode::WIDE_ALIGNMENT_PATTERN_POSITIONS_X = {
+	
+};
+
+const vector<int> QrCode::WIDE_ALIGNMENT_PATTERN_POSITIONS_Y = {
+
 };
 
 

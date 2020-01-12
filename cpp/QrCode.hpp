@@ -62,7 +62,11 @@ class QrCode final {
 		QUARTILE,  // The QR Code can tolerate about 25% erroneous codewords
 		HIGH    ,  // The QR Code can tolerate about 30% erroneous codewords
 	};
-	
+
+	public: struct Version {
+		bool wide;
+		int version;
+	};
 	
 	// Returns a value in the range 0 to 3 (unsigned 2-bit integer).
 	private: static int getFormatBits(Ecc ecl);
@@ -114,7 +118,7 @@ class QrCode final {
 	
 	/* The version number of this QR Code, which is between 1 and 40 (inclusive).
 	 * This determines the size of this barcode. */
-	private: int version;
+	private: Version version;
 	
 	/* The width and height of this QR Code, measured in modules, between
 	 * 21 and 177 (inclusive). This is equal to version * 4 + 17. */
@@ -147,7 +151,7 @@ class QrCode final {
 	 * This is a low-level API that most users should not use directly.
 	 * A mid-level API is the encodeSegments() function.
 	 */
-	public: QrCode(int ver, Ecc ecl, const std::vector<std::uint8_t> &dataCodewords, int msk);
+	public: QrCode(Version ver, Ecc ecl, const std::vector<std::uint8_t> &dataCodewords, int msk);
 	
 	
 	
@@ -265,13 +269,13 @@ class QrCode final {
 	// Returns the number of data bits that can be stored in a QR Code of the given version number, after
 	// all function modules are excluded. This includes remainder bits, so it might not be a multiple of 8.
 	// The result is in the range [208, 29648]. This could be implemented as a 40-entry lookup table.
-	private: static int getNumRawDataModules(int ver);
+	private: static int getNumRawDataModules(Version ver);
 	
 	
 	// Returns the number of 8-bit data (i.e. not error correction) codewords contained in any
 	// QR Code of the given version number and error correction level, with remainder bits discarded.
 	// This stateless pure function could be implemented as a (40*4)-cell lookup table.
-	private: static int getNumDataCodewords(int ver, Ecc ecl);
+	private: static int getNumDataCodewords(Version ver, Ecc ecl);
 	
 	
 	// Returns a Reed-Solomon ECC generator polynomial for the given degree. This could be
@@ -324,6 +328,16 @@ class QrCode final {
 	private: static const std::int8_t ECC_CODEWORDS_PER_BLOCK[4][41];
 	private: static const std::int8_t NUM_ERROR_CORRECTION_BLOCKS[4][41];
 	
+	private: static constexpr int WIDE_WIDTH = 126;
+	private: static constexpr int WIDE_HEIGHT = 94;
+	private: static constexpr int WIDE_ECC_CODEWORKS_PER_BLOCK = 28;
+	private: static constexpr int WIDE_NUM_ERROR_CORRECTION_BLOCKS = 30;
+
+	private: static const std::vector<int> WIDE_ALIGNMENT_PATTERN_POSITIONS_X;
+	private: static const std::vector<int> WIDE_ALIGNMENT_PATTERN_POSITIONS_Y;
+
+	private: static int ECCCodeworksPerBlock(Ecc ecc, Version ver);
+	private: static int NumErrorCorrectionBlocks(Ecc ecc, Version ver);
 };
 
 

@@ -109,6 +109,7 @@ class QrCode final {
 	 */
 	public: static QrCode encodeSegments(const std::vector<QrSegment> &segs, Ecc ecl,
 		int minVersion=1, int maxVersion=40, int mask=-1, bool boostEcl=true);  // All optional parameters
+	public: static QrCode encodeSegmentsWide(const std::vector<QrSegment> &segs, int mask=0);  // All optional parameters
 	
 	
 	
@@ -167,6 +168,8 @@ class QrCode final {
 	 * Returns this QR Code's size, in the range [21, 177].
 	 */
 	public: int getSize() const;
+	public: int getWidth() const;
+	public: int getHeight() const;
 	
 	
 	/* 
@@ -263,7 +266,9 @@ class QrCode final {
 	// Returns an ascending list of positions of alignment patterns for this version number.
 	// Each position is in the range [0,177), and are used on both the x and y axes.
 	// This could be implemented as lookup table of 40 variable-length lists of unsigned bytes.
-	private: std::vector<int> getAlignmentPatternPositions() const;
+	private: std::vector<int> getAlignmentPatternPositionsX() const;
+	private: std::vector<int> getAlignmentPatternPositionsY() const;
+	private: std::vector<int> getAlignmentPatternPositionsOrig() const;
 	
 	
 	// Returns the number of data bits that can be stored in a QR Code of the given version number, after

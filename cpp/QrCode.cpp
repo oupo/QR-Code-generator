@@ -126,6 +126,62 @@ QrCode QrCode::encodeSegments(const vector<QrSegment> &segs, Ecc ecl,
 }
 
 
+QrCode QrCode::encodeSegmentsWide(const vector<QrSegment> &segs, int mask) {
+	if (mask < -1 || mask > 7)
+		throw std::invalid_argument("Invalid value");
+	
+	// Find the minimal version number to use
+	Version version = {true, 0};
+	Ecc dummyEcl = Ecc::MEDIUM;
+	int dummyVer = 40;
+	int dataCapacityBits = getNumDataCodewords(version, dummyEcl) * 8;
+	fprintf(stderr, "%d\n", dataCapacityBits);
+	int dataUsedBits = QrSegment::getTotalBits(segs, dummyVer);
+	if (dataUsedBits != -1 && dataUsedBits <= dataCapacityBits) {
+		// ok
+	} else {
+		std::ostringstream sb;
+		if (dataUsedBits == -1)
+			sb << "Segment too long";
+		else {
+			sb << "Data length = " << dataUsedBits << " bits, ";
+			sb << "Max capacity = " << dataCapacityBits << " bits";
+		}
+		throw data_too_long(sb.str());
+	}
+	
+	// Concatenate all segments to create the data bit string
+	BitBuffer bb;
+	for (const QrSegment &seg : segs) {
+		bb.appendBits(static_cast<uint32_t>(seg.getMode().getModeBits()), 4);
+		bb.appendBits(static_cast<uint32_t>(seg.getNumChars()), seg.getMode().numCharCountBits(dummyVer));
+		bb.insert(bb.end(), seg.getData().begin(), seg.getData().end());
+	}
+	if (bb.size() != static_cast<unsigned int>(dataUsedBits))
+		throw std::logic_error("Assertion error");
+	
+	// Add terminator and pad up to a byte if applicable
+	if (bb.size() > dataCapacityBits)
+		throw std::logic_error("Assertion error");
+	bb.appendBits(0, std::min(4, static_cast<int>(dataCapacityBits - bb.size())));
+	bb.appendBits(0, (8 - static_cast<int>(bb.size() % 8)) % 8);
+	if (bb.size() % 8 != 0)
+		throw std::logic_error("Assertion error");
+	
+	// Pad with alternating bytes until data capacity is reached
+	for (uint8_t padByte = 0xEC; bb.size() < dataCapacityBits; padByte ^= 0xEC ^ 0x11)
+		bb.appendBits(padByte, 8);
+	
+	// Pack bits into bytes in big endian
+	vector<uint8_t> dataCodewords(bb.size() / 8);
+	for (size_t i = 0; i < bb.size(); i++)
+		dataCodewords[i >> 3] |= (bb.at(i) ? 1 : 0) << (7 - (i & 7));
+	
+	// Create the QR Code object
+	return QrCode(version, Ecc::MEDIUM, dataCodewords, mask);
+}
+
+
 QrCode::QrCode(Version ver, Ecc ecl, const vector<uint8_t> &dataCodewords, int msk) :
 		// Initialize fields and check arguments
 		version(ver),
@@ -134,10 +190,14 @@ QrCode::QrCode(Version ver, Ecc ecl, const vector<uint8_t> &dataCodewords, int m
 		throw std::domain_error("Version value out of range");
 	if (msk < -1 || msk > 7)
 		throw std::domain_error("Mask value out of range");
-	size = ver.version * 4 + 17;
+	if (ver.wide) {
+		size = 0;
+	} else {
+		size = ver.version * 4 + 17;
+	}
 	size_t sz = static_cast<size_t>(size);
-	modules    = vector<vector<bool> >(sz, vector<bool>(sz));  // Initially all white
-	isFunction = vector<vector<bool> >(sz, vector<bool>(sz));
+	modules    = vector<vector<bool> >(getHeight(), vector<bool>(getWidth()));  // Initially all white
+	isFunction = vector<vector<bool> >(getHeight(), vector<bool>(getWidth()));
 	
 	// Compute ECC, draw modules
 	drawFunctionPatterns();
@@ -163,7 +223,7 @@ QrCode::QrCode(Version ver, Ecc ecl, const vector<uint8_t> &dataCodewords, int m
 	this->mask = msk;
 	applyMask(msk);  // Apply the final choice of mask
 	drawFormatBits(msk);  // Overwrite old format bits
-	
+
 	isFunction.clear();
 	isFunction.shrink_to_fit();
 }
@@ -175,7 +235,20 @@ int QrCode::getVersion() const {
 
 
 int QrCode::getSize() const {
+	if (version.wide) {
+		throw "can't call getSize() in wide ver";
+	}
 	return size;
+}
+
+
+int QrCode::getWidth() const {
+	return version.wide ? WIDE_WIDTH : size;
+}
+
+
+int QrCode::getHeight() const {
+	return version.wide ? WIDE_HEIGHT : size;
 }
 
 
@@ -190,7 +263,7 @@ int QrCode::getMask() const {
 
 
 bool QrCode::getModule(int x, int y) const {
-	return 0 <= x && x < size && 0 <= y && y < size && module(x, y);
+	return 0 <= x && x < getWidth() && 0 <= y && y < getHeight() && module(x, y);
 }
 
 
@@ -204,11 +277,11 @@ std::string QrCode::toSvgString(int border) const {
 	sb << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
 	sb << "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" \"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\">\n";
 	sb << "<svg xmlns=\"http://www.w3.org/2000/svg\" version=\"1.1\" viewBox=\"0 0 ";
-	sb << (size + border * 2) << " " << (size + border * 2) << "\" stroke=\"none\">\n";
+	sb << (getWidth() + border * 2) << " " << (getHeight() + border * 2) << "\" stroke=\"none\">\n";
 	sb << "\t<rect width=\"100%\" height=\"100%\" fill=\"#FFFFFF\"/>\n";
 	sb << "\t<path d=\"";
-	for (int y = 0; y < size; y++) {
-		for (int x = 0; x < size; x++) {
+	for (int y = 0; y < getHeight(); y++) {
+		for (int x = 0; x < getWidth(); x++) {
 			if (getModule(x, y)) {
 				if (x != 0 || y != 0)
 					sb << " ";
@@ -224,24 +297,28 @@ std::string QrCode::toSvgString(int border) const {
 
 void QrCode::drawFunctionPatterns() {
 	// Draw horizontal and vertical timing patterns
-	for (int i = 0; i < size; i++) {
+	for (int i = 0; i < getHeight(); i++) {
 		setFunctionModule(6, i, i % 2 == 0);
+	}
+	for (int i = 0; i < getWidth(); i++) {
 		setFunctionModule(i, 6, i % 2 == 0);
 	}
 	
 	// Draw 3 finder patterns (all corners except bottom right; overwrites some timing modules)
 	drawFinderPattern(3, 3);
-	drawFinderPattern(size - 4, 3);
-	drawFinderPattern(3, size - 4);
+	drawFinderPattern(getWidth() - 4, 3);
+	drawFinderPattern(3, getHeight() - 4);
 	
 	// Draw numerous alignment patterns
-	const vector<int> alignPatPos = getAlignmentPatternPositions();
-	size_t numAlign = alignPatPos.size();
-	for (size_t i = 0; i < numAlign; i++) {
-		for (size_t j = 0; j < numAlign; j++) {
+	const vector<int> alignPatPosX = getAlignmentPatternPositionsX();
+	const vector<int> alignPatPosY = getAlignmentPatternPositionsY();
+	size_t numAlignX = alignPatPosX.size();
+	size_t numAlignY = alignPatPosY.size();
+	for (size_t i = 0; i < numAlignX; i++) {
+		for (size_t j = 0; j < numAlignY; j++) {
 			// Don't draw on the three finder corners
-			if (!((i == 0 && j == 0) || (i == 0 && j == numAlign - 1) || (i == numAlign - 1 && j == 0)))
-				drawAlignmentPattern(alignPatPos.at(i), alignPatPos.at(j));
+			if (!((i == 0 && j == 0) || (i == 0 && j == numAlignY - 1) || (i == numAlignX - 1 && j == 0)))
+				drawAlignmentPattern(alignPatPosX.at(i), alignPatPosY.at(j));
 		}
 	}
 	
@@ -272,32 +349,34 @@ void QrCode::drawFormatBits(int msk) {
 	
 	// Draw second copy
 	for (int i = 0; i < 8; i++)
-		setFunctionModule(size - 1 - i, 8, getBit(bits, i));
+		setFunctionModule(getWidth() - 1 - i, 8, getBit(bits, i));
 	for (int i = 8; i < 15; i++)
-		setFunctionModule(8, size - 15 + i, getBit(bits, i));
-	setFunctionModule(8, size - 8, true);  // Always black
+		setFunctionModule(8, getHeight() - 15 + i, getBit(bits, i));
+	setFunctionModule(8, getHeight() - 8, true);  // Always black
 }
 
 
 void QrCode::drawVersion() {
-	if (version.version < 7)
+	int ver = version.wide ? 41 : version.version;
+	if (ver < 7)
 		return;
 	
 	// Calculate error correction code and pack bits
-	int rem = version.version;  // version is uint6, in the range [7, 40]
+	int rem = ver;  // version is uint6, in the range [7, 40]
 	for (int i = 0; i < 12; i++)
 		rem = (rem << 1) ^ ((rem >> 11) * 0x1F25);
-	long bits = static_cast<long>(version.version) << 12 | rem;  // uint18
+	long bits = static_cast<long>(ver) << 12 | rem;  // uint18
 	if (bits >> 18 != 0)
 		throw std::logic_error("Assertion error");
 	
 	// Draw two copies
 	for (int i = 0; i < 18; i++) {
 		bool bit = getBit(bits, i);
-		int a = size - 11 + i % 3;
+		int ax = getWidth() - 11 + i % 3;
+		int ay = getHeight() - 11 + i % 3;
 		int b = i / 3;
-		setFunctionModule(a, b, bit);
-		setFunctionModule(b, a, bit);
+		setFunctionModule(ax, b, bit);
+		setFunctionModule(b, ay, bit);
 	}
 }
 
@@ -307,7 +386,7 @@ void QrCode::drawFinderPattern(int x, int y) {
 		for (int dx = -4; dx <= 4; dx++) {
 			int dist = std::max(std::abs(dx), std::abs(dy));  // Chebyshev/infinity norm
 			int xx = x + dx, yy = y + dy;
-			if (0 <= xx && xx < size && 0 <= yy && yy < size)
+			if (0 <= xx && xx < getWidth() && 0 <= yy && yy < getHeight())
 				setFunctionModule(xx, yy, dist != 2 && dist != 4);
 		}
 	}
@@ -380,14 +459,14 @@ void QrCode::drawCodewords(const vector<uint8_t> &data) {
 	
 	size_t i = 0;  // Bit index into the data
 	// Do the funny zigzag scan
-	for (int right = size - 1; right >= 1; right -= 2) {  // Index of right column in each column pair
+	for (int right = getWidth() - 1; right >= 1; right -= 2) {  // Index of right column in each column pair
 		if (right == 6)
 			right = 5;
-		for (int vert = 0; vert < size; vert++) {  // Vertical counter
+		for (int vert = 0; vert < getHeight(); vert++) {  // Vertical counter
 			for (int j = 0; j < 2; j++) {
 				size_t x = static_cast<size_t>(right - j);  // Actual x coordinate
 				bool upward = ((right + 1) & 2) == 0;
-				size_t y = static_cast<size_t>(upward ? size - 1 - vert : vert);  // Actual y coordinate
+				size_t y = static_cast<size_t>(upward ? getHeight() - 1 - vert : vert);  // Actual y coordinate
 				if (!isFunction.at(y).at(x) && i < data.size() * 8) {
 					modules.at(y).at(x) = getBit(data.at(i >> 3), 7 - static_cast<int>(i & 7));
 					i++;
@@ -405,9 +484,10 @@ void QrCode::drawCodewords(const vector<uint8_t> &data) {
 void QrCode::applyMask(int msk) {
 	if (msk < 0 || msk > 7)
 		throw std::domain_error("Mask value out of range");
-	size_t sz = static_cast<size_t>(size);
-	for (size_t y = 0; y < sz; y++) {
-		for (size_t x = 0; x < sz; x++) {
+	size_t w = static_cast<size_t>(getWidth());
+	size_t h = static_cast<size_t>(getHeight());
+	for (size_t y = 0; y < h; y++) {
+		for (size_t x = 0; x < w; x++) {
 			bool invert;
 			switch (msk) {
 				case 0:  invert = (x + y) % 2 == 0;                    break;
@@ -427,6 +507,9 @@ void QrCode::applyMask(int msk) {
 
 
 long QrCode::getPenaltyScore() const {
+	if (version.wide) {
+		throw "unimplemented";
+	}
 	long result = 0;
 	
 	// Adjacent modules in row having same color, and finder-like patterns
@@ -505,29 +588,63 @@ long QrCode::getPenaltyScore() const {
 }
 
 
-vector<int> QrCode::getAlignmentPatternPositions() const {
+vector<int> QrCode::getAlignmentPatternPositionsX() const {
 	if (version.wide) {
-		throw std::logic_error("unimplemented");
+		int numAlign = WIDE_WIDTH / 28 + 1;
+		int step = (WIDE_WIDTH - 17 + numAlign*2 + 1) / (numAlign*2 - 2) * 2;
+		vector<int> result;
+		for (int i = 0, pos = WIDE_WIDTH - 7; i < numAlign - 1; i++, pos -= step)
+			result.insert(result.begin(), pos);
+		result.insert(result.begin(), 6);
+		return result;
 	} else {
-		if (version.version == 1)
-			return vector<int>();
-		else {
-			int numAlign = version.version / 7 + 2;
-			int step = (version.version == 32) ? 26 :
-				(version.version*4 + numAlign*2 + 1) / (numAlign*2 - 2) * 2;
-			vector<int> result;
-			for (int i = 0, pos = size - 7; i < numAlign - 1; i++, pos -= step)
-				result.insert(result.begin(), pos);
-			result.insert(result.begin(), 6);
-			return result;
-		}
+		return getAlignmentPatternPositionsOrig();
+	}
+}
+
+
+vector<int> QrCode::getAlignmentPatternPositionsY() const {
+	if (version.wide) {
+		int numAlign = WIDE_HEIGHT / 28 + 1;
+		int step = (WIDE_HEIGHT - 17 + numAlign*2 + 1) / (numAlign*2 - 2) * 2;
+		vector<int> result;
+		for (int i = 0, pos = WIDE_HEIGHT - 7; i < numAlign - 1; i++, pos -= step)
+			result.insert(result.begin(), pos);
+		result.insert(result.begin(), 6);
+		return result;
+	} else {
+		return getAlignmentPatternPositionsOrig();
+	}
+}
+
+
+vector<int> QrCode::getAlignmentPatternPositionsOrig() const {
+	if (version.version == 1)
+		return vector<int>();
+	else {
+		int numAlign = version.version / 7 + 2;
+		int step = (version.version == 32) ? 26 :
+			(version.version*4 + numAlign*2 + 1) / (numAlign*2 - 2) * 2;
+		vector<int> result;
+		for (int i = 0, pos = size - 7; i < numAlign - 1; i++, pos -= step)
+			result.insert(result.begin(), pos);
+		result.insert(result.begin(), 6);
+		return result;
 	}
 }
 
 
 int QrCode::getNumRawDataModules(Version ver) {
 	if (ver.wide) {
-		throw std::logic_error("unimplemented");
+		int finder = 8 * 8 * 3;
+		int timingPattern = (WIDE_WIDTH - 16) + (WIDE_HEIGHT - 16);
+		int numAlignX = WIDE_WIDTH / 28 + 1;
+		int numAlignY = WIDE_HEIGHT / 28 + 1;
+		int numAlign = numAlignX * numAlignY - 3;
+		int align = 25 * numAlign;
+		int version = 18 * 2;
+		int format = 31;
+		return WIDE_WIDTH * WIDE_HEIGHT - finder - timingPattern - align - version - format;
 	} else {
 		if (ver.version < MIN_VERSION || ver.version > MAX_VERSION)
 			throw std::domain_error("Version number out of range");

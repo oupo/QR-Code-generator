@@ -135,7 +135,6 @@ QrCode QrCode::encodeSegmentsWide(const vector<QrSegment> &segs, int mask) {
 	Ecc dummyEcl = Ecc::MEDIUM;
 	int dummyVer = 40;
 	int dataCapacityBits = getNumDataCodewords(version, dummyEcl) * 8;
-	fprintf(stderr, "%d\n", dataCapacityBits);
 	int dataUsedBits = QrSegment::getTotalBits(segs, dummyVer);
 	if (dataUsedBits != -1 && dataUsedBits <= dataCapacityBits) {
 		// ok
@@ -296,6 +295,18 @@ std::string QrCode::toSvgString(int border) const {
 
 
 void QrCode::drawFunctionPatterns() {
+	if (version.wide) {
+		for (int dy = 0; dy < 2; dy ++) {
+			for (int dx = 0; dx < 2; dx ++) {
+				setFunctionModule(dx, dy, false);
+				setFunctionModule(WIDE_WIDTH - 2 + dx, dy, false);
+				setFunctionModule(dx, WIDE_HEIGHT - 2 + dy, false);
+				setFunctionModule(WIDE_WIDTH - 2 + dx, WIDE_HEIGHT - 2 + dy, false);
+			}
+		}
+		return;
+
+	}
 	// Draw horizontal and vertical timing patterns
 	for (int i = 0; i < getHeight(); i++) {
 		setFunctionModule(6, i, i % 2 == 0);
@@ -460,7 +471,7 @@ void QrCode::drawCodewords(const vector<uint8_t> &data) {
 	size_t i = 0;  // Bit index into the data
 	// Do the funny zigzag scan
 	for (int right = getWidth() - 1; right >= 1; right -= 2) {  // Index of right column in each column pair
-		if (right == 6)
+		if (!version.wide && right == 6)
 			right = 5;
 		for (int vert = 0; vert < getHeight(); vert++) {  // Vertical counter
 			for (int j = 0; j < 2; j++) {
@@ -589,32 +600,12 @@ long QrCode::getPenaltyScore() const {
 
 
 vector<int> QrCode::getAlignmentPatternPositionsX() const {
-	if (version.wide) {
-		int numAlign = WIDE_WIDTH / 28 + 1;
-		int step = (WIDE_WIDTH - 17 + numAlign*2 + 1) / (numAlign*2 - 2) * 2;
-		vector<int> result;
-		for (int i = 0, pos = WIDE_WIDTH - 7; i < numAlign - 1; i++, pos -= step)
-			result.insert(result.begin(), pos);
-		result.insert(result.begin(), 6);
-		return result;
-	} else {
-		return getAlignmentPatternPositionsOrig();
-	}
+	return getAlignmentPatternPositionsOrig();
 }
 
 
 vector<int> QrCode::getAlignmentPatternPositionsY() const {
-	if (version.wide) {
-		int numAlign = WIDE_HEIGHT / 28 + 1;
-		int step = (WIDE_HEIGHT - 17 + numAlign*2 + 1) / (numAlign*2 - 2) * 2;
-		vector<int> result;
-		for (int i = 0, pos = WIDE_HEIGHT - 7; i < numAlign - 1; i++, pos -= step)
-			result.insert(result.begin(), pos);
-		result.insert(result.begin(), 6);
-		return result;
-	} else {
-		return getAlignmentPatternPositionsOrig();
-	}
+	return getAlignmentPatternPositionsOrig();
 }
 
 
@@ -636,15 +627,8 @@ vector<int> QrCode::getAlignmentPatternPositionsOrig() const {
 
 int QrCode::getNumRawDataModules(Version ver) {
 	if (ver.wide) {
-		int finder = 8 * 8 * 3;
-		int timingPattern = (WIDE_WIDTH - 16) + (WIDE_HEIGHT - 16);
-		int numAlignX = WIDE_WIDTH / 28 + 1;
-		int numAlignY = WIDE_HEIGHT / 28 + 1;
-		int numAlign = numAlignX * numAlignY - 3;
-		int align = 25 * numAlign;
-		int version = 18 * 2;
-		int format = 31;
-		return WIDE_WIDTH * WIDE_HEIGHT - finder - timingPattern - align - version - format;
+		int finder = 2 * 2 * 4;
+		return WIDE_WIDTH * WIDE_HEIGHT - finder;
 	} else {
 		if (ver.version < MIN_VERSION || ver.version > MAX_VERSION)
 			throw std::domain_error("Version number out of range");

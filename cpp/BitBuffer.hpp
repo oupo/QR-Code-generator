@@ -37,7 +37,7 @@ class BitBuffer final : public std::vector<bool> {
 	/*---- Constructor ----*/
 	
 	// Creates an empty bit buffer (length 0).
-	public: BitBuffer();
+	public: BitBuffer(size_t n = 32);
 	
 	
 	

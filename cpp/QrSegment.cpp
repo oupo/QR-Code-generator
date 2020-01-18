@@ -62,7 +62,7 @@ const QrSegment::Mode QrSegment::Mode::ECI         (0x7,  0,  0,  0);
 QrSegment QrSegment::makeBytes(const vector<uint8_t> &data) {
 	if (data.size() > static_cast<unsigned int>(INT_MAX))
 		throw std::length_error("Data too long");
-	BitBuffer bb;
+	BitBuffer bb(data.size() * 8);
 	for (uint8_t b : data)
 		bb.appendBits(b, 8);
 	return QrSegment(Mode::BYTE, static_cast<int>(data.size()), std::move(bb));
@@ -70,7 +70,7 @@ QrSegment QrSegment::makeBytes(const vector<uint8_t> &data) {
 
 
 QrSegment QrSegment::makeNumeric(const char *digits) {
-	BitBuffer bb;
+	BitBuffer bb(32);
 	int accumData = 0;
 	int accumCount = 0;
 	int charCount = 0;
@@ -93,7 +93,7 @@ QrSegment QrSegment::makeNumeric(const char *digits) {
 
 
 QrSegment QrSegment::makeAlphanumeric(const char *text) {
-	BitBuffer bb;
+	BitBuffer bb(32);
 	int accumData = 0;
 	int accumCount = 0;
 	int charCount = 0;
@@ -134,7 +134,7 @@ vector<QrSegment> QrSegment::makeSegments(const char *text) {
 
 
 QrSegment QrSegment::makeEci(long assignVal) {
-	BitBuffer bb;
+	BitBuffer bb(32);
 	if (assignVal < 0)
 		throw std::domain_error("ECI assignment value out of range");
 	else if (assignVal < (1 << 7))

@@ -27,15 +27,19 @@
 
 namespace qrcodegen {
 
-BitBuffer::BitBuffer()
-	: std::vector<bool>() {}
+BitBuffer::BitBuffer(size_t n)
+	: std::vector<bool>() {
+		this->reserve(n);
+}
 
 
 void BitBuffer::appendBits(std::uint32_t val, int len) {
 	if (len < 0 || len > 31 || val >> len != 0)
 		throw std::domain_error("Value out of range");
-	for (int i = len - 1; i >= 0; i--)  // Append bit by bit
-		this->push_back(((val >> i) & 1) != 0);
+	int j = this->size();
+	this->resize(this->size() + len);
+	for (int i = len - 1; i >= 0; i--, j++)  // Append bit by bit
+		(*this)[j] = ((val >> i) & 1) != 0;
 }
 
 }

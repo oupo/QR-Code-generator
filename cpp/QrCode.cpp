@@ -94,7 +94,7 @@ QrCode QrCode::encodeSegments(const vector<QrSegment> &segs, Ecc ecl,
 	}
 	
 	// Concatenate all segments to create the data bit string
-	BitBuffer bb;
+	BitBuffer bb(dataUsedBits);
 	for (const QrSegment &seg : segs) {
 		bb.appendBits(static_cast<uint32_t>(seg.getMode().getModeBits()), 4);
 		bb.appendBits(static_cast<uint32_t>(seg.getNumChars()), seg.getMode().numCharCountBits(version));
@@ -150,7 +150,7 @@ QrCode QrCode::encodeSegmentsWide(const vector<QrSegment> &segs, int mask) {
 	}
 	
 	// Concatenate all segments to create the data bit string
-	BitBuffer bb;
+	BitBuffer bb(dataUsedBits);
 	for (const QrSegment &seg : segs) {
 		bb.appendBits(static_cast<uint32_t>(seg.getMode().getModeBits()), 4);
 		bb.appendBits(static_cast<uint32_t>(seg.getNumChars()), seg.getMode().numCharCountBits(dummyVer));
@@ -669,17 +669,20 @@ vector<uint8_t> QrCode::reedSolomonComputeDivisor(int degree) {
 }
 
 
-vector<uint8_t> QrCode::reedSolomonComputeRemainder(const vector<uint8_t> &data, const vector<uint8_t> &divisor) {
+static uint8_t REED_SOLOMON_MULTIPLY[256][256];
+
+vector<uint8_t> QrCode::reedSolomonComputeRemainder(const vector<uint8_t>& data, const vector<uint8_t>& divisor) {
 	vector<uint8_t> result(divisor.size());
 	for (uint8_t b : data) {  // Polynomial division
 		uint8_t factor = b ^ result.at(0);
 		result.erase(result.begin());
 		result.push_back(0);
 		for (size_t i = 0; i < result.size(); i++)
-			result.at(i) ^= reedSolomonMultiply(divisor.at(i), factor);
+			result.at(i) ^= REED_SOLOMON_MULTIPLY[divisor.at(i)][factor];
 	}
 	return result;
 }
+
 
 
 uint8_t QrCode::reedSolomonMultiply(uint8_t x, uint8_t y) {
@@ -692,6 +695,14 @@ uint8_t QrCode::reedSolomonMultiply(uint8_t x, uint8_t y) {
 	if (z >> 8 != 0)
 		throw std::logic_error("Assertion error");
 	return static_cast<uint8_t>(z);
+}
+
+void QrCode::initialize() {
+	for (int x = 0; x < 256; x++) {
+		for (int y = 0; y < 256; y++) {
+			REED_SOLOMON_MULTIPLY[x][y] = reedSolomonMultiply(x, y);
+		}
+	}
 }
 
 

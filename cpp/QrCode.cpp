@@ -296,14 +296,6 @@ std::string QrCode::toSvgString(int border) const {
 
 void QrCode::drawFunctionPatterns() {
 	if (version.wide) {
-		for (int dy = 0; dy < 2; dy ++) {
-			for (int dx = 0; dx < 2; dx ++) {
-				setFunctionModule(dx, dy, false);
-				setFunctionModule(WIDE_WIDTH - 2 + dx, dy, false);
-				setFunctionModule(dx, WIDE_HEIGHT - 2 + dy, false);
-				setFunctionModule(WIDE_WIDTH - 2 + dx, WIDE_HEIGHT - 2 + dy, false);
-			}
-		}
 		return;
 
 	}
@@ -627,8 +619,7 @@ vector<int> QrCode::getAlignmentPatternPositionsOrig() const {
 
 int QrCode::getNumRawDataModules(Version ver) {
 	if (ver.wide) {
-		int finder = 2 * 2 * 4;
-		return WIDE_WIDTH * WIDE_HEIGHT - finder;
+		return WIDE_WIDTH * WIDE_HEIGHT;
 	} else {
 		if (ver.version < MIN_VERSION || ver.version > MAX_VERSION)
 			throw std::domain_error("Version number out of range");

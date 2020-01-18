@@ -333,10 +333,10 @@ class QrCode final {
 	private: static const std::int8_t ECC_CODEWORDS_PER_BLOCK[4][41];
 	private: static const std::int8_t NUM_ERROR_CORRECTION_BLOCKS[4][41];
 	
-	private: static constexpr int WIDE_WIDTH = 126;
+	private: static constexpr int WIDE_WIDTH = 252;
 	private: static constexpr int WIDE_HEIGHT = 94;
 	private: static constexpr int WIDE_ECC_CODEWORKS_PER_BLOCK = 30;
-	private: static constexpr int WIDE_NUM_ERROR_CORRECTION_BLOCKS = 10;
+	private: static constexpr int WIDE_NUM_ERROR_CORRECTION_BLOCKS = 19;
 
 	private: static const std::vector<int> WIDE_ALIGNMENT_PATTERN_POSITIONS_X;
 	private: static const std::vector<int> WIDE_ALIGNMENT_PATTERN_POSITIONS_Y;

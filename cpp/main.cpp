@@ -13,7 +13,7 @@ using std::uint8_t;
 using qrcodegen::QrCode;
 using qrcodegen::QrSegment;
 
-const int BLOCK_SIZE = 0x900;
+const int BLOCK_SIZE = 0x1200;
 
 void writeRandomData(std::vector<uint8_t>& data, uint32_t seed) {
 	data.resize(BLOCK_SIZE);

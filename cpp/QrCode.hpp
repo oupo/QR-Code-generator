@@ -345,7 +345,7 @@ class QrCode final {
 	private: static int ECCCodeworksPerBlock(Ecc ecc, Version ver);
 	private: static int NumErrorCorrectionBlocks(Ecc ecc, Version ver);
 
-	public: static void initialize();
+	public: static void initialize(int eccLen);
 };
 
 

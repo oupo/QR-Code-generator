@@ -40,7 +40,7 @@ QrCode dumpQR(int blockid, uint8_t* buf, int len)
 }
 
 int main() {
-	QrCode::initialize();
+	QrCode::initialize(30);
 	std::vector<uint8_t> testdata;
 	writeRandomData(testdata, 0xdeadbeef);
 	auto start = std::chrono::steady_clock::now();

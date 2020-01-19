@@ -42,7 +42,9 @@ static uint8_t REED_SOLOMON_MULTIPLY[256][256];
 
 static uint8_t MASK[8][6][6];
 
-void QrCode::initialize() {
+static vector<uint8_t> DIVISOR;
+
+void QrCode::initialize(int eccLen) {
 	for (int x = 0; x < 256; x++) {
 		for (int y = 0; y < 256; y++) {
 			REED_SOLOMON_MULTIPLY[x][y] = reedSolomonMultiply(x, y);
@@ -60,6 +62,7 @@ void QrCode::initialize() {
 			MASK[7][y][x] = ((x + y) % 2 + x * y % 3) % 2 == 0;
 		}
 	}
+	DIVISOR = reedSolomonComputeDivisor(eccLen);
 }
 
 int QrCode::getFormatBits(Ecc ecl) {
@@ -456,11 +459,13 @@ vector<uint8_t> QrCode::addEccAndInterleave(const vector<uint8_t> &data) const {
 	
 	// Split data into blocks and append ECC to each block
 	vector<vector<uint8_t> > blocks;
-	const vector<uint8_t> rsDiv = reedSolomonComputeDivisor(blockEccLen);
+	if (DIVISOR.size() != blockEccLen) {
+		throw "call initialize() with a correct parameter";
+	}
 	for (int i = 0, k = 0; i < numBlocks; i++) {
 		vector<uint8_t> dat(data.cbegin() + k, data.cbegin() + (k + shortBlockLen - blockEccLen + (i < numShortBlocks ? 0 : 1)));
 		k += static_cast<int>(dat.size());
-		const vector<uint8_t> ecc = reedSolomonComputeRemainder(dat, rsDiv);
+		const vector<uint8_t> ecc = reedSolomonComputeRemainder(dat, DIVISOR);
 		if (i < numShortBlocks)
 			dat.push_back(0);
 		dat.insert(dat.end(), ecc.cbegin(), ecc.cend());

@@ -63,8 +63,7 @@ QrSegment QrSegment::makeBytes(const vector<uint8_t> &data) {
 	if (data.size() > static_cast<unsigned int>(INT_MAX))
 		throw std::length_error("Data too long");
 	BitBuffer bb(data.size() * 8);
-	for (uint8_t b : data)
-		bb.appendBits(b, 8);
+	bb.appendBytes(data);
 	return QrSegment(Mode::BYTE, static_cast<int>(data.size()), std::move(bb));
 }
 

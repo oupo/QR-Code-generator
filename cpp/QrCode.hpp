@@ -244,7 +244,8 @@ class QrCode final {
 	
 	// Draws the given sequence of 8-bit codewords (data and error correction) onto the entire
 	// data area of this QR Code. Function modules need to be marked off before this is called.
-	private: void drawCodewords(const std::vector<std::uint8_t> &data);
+	private: void drawCodewords(const std::vector<std::uint8_t>& data);
+	private: void drawCodewordsWide(const std::vector<std::uint8_t>& data, int msk);
 	
 	
 	// XORs the codeword modules in this QR Code with the given mask pattern.

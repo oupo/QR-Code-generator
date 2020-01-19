@@ -38,6 +38,30 @@ using std::vector;
 
 namespace qrcodegen {
 
+static uint8_t REED_SOLOMON_MULTIPLY[256][256];
+
+static uint8_t MASK[8][6][6];
+
+void QrCode::initialize() {
+	for (int x = 0; x < 256; x++) {
+		for (int y = 0; y < 256; y++) {
+			REED_SOLOMON_MULTIPLY[x][y] = reedSolomonMultiply(x, y);
+		}
+	}
+	for (int y = 0; y < 6; y++) {
+		for (int x = 0; x < 6; x++) {
+			MASK[0][y][x] = (x + y) % 2 == 0;
+			MASK[1][y][x] = y % 2 == 0;
+			MASK[2][y][x] = x % 3 == 0;
+			MASK[3][y][x] = (x + y) % 3 == 0;
+			MASK[4][y][x] = (x / 3 + y / 2) % 2 == 0;
+			MASK[5][y][x] = x * y % 2 + x * y % 3 == 0;
+			MASK[6][y][x] = (x * y % 2 + x * y % 3) % 2 == 0;
+			MASK[7][y][x] = ((x + y) % 2 + x * y % 3) % 2 == 0;
+		}
+	}
+}
+
 int QrCode::getFormatBits(Ecc ecl) {
 	switch (ecl) {
 		case Ecc::LOW     :  return 1;
@@ -201,28 +225,30 @@ QrCode::QrCode(Version ver, Ecc ecl, const vector<uint8_t> &dataCodewords, int m
 	// Compute ECC, draw modules
 	drawFunctionPatterns();
 	const vector<uint8_t> allCodewords = addEccAndInterleave(dataCodewords);
-	drawCodewords(allCodewords);
-	
-	// Do masking
-	if (msk == -1) {  // Automatically choose best mask
-		long minPenalty = LONG_MAX;
-		for (int i = 0; i < 8; i++) {
-			applyMask(i);
-			drawFormatBits(i);
-			long penalty = getPenaltyScore();
-			if (penalty < minPenalty) {
-				msk = i;
-				minPenalty = penalty;
+	if (version.wide) {
+		drawCodewordsWide(allCodewords, msk);
+	} else {
+		drawCodewords(allCodewords);
+		// Do masking
+		if (msk == -1) {  // Automatically choose best mask
+			long minPenalty = LONG_MAX;
+			for (int i = 0; i < 8; i++) {
+				applyMask(i);
+				drawFormatBits(i);
+				long penalty = getPenaltyScore();
+				if (penalty < minPenalty) {
+					msk = i;
+					minPenalty = penalty;
+				}
+				applyMask(i);  // Undoes the mask due to XOR
 			}
-			applyMask(i);  // Undoes the mask due to XOR
 		}
+		if (msk < 0 || msk > 7)
+			throw std::logic_error("Assertion error");
+		this->mask = msk;
+		applyMask(msk);  // Apply the final choice of mask
+		drawFormatBits(msk);  // Overwrite old format bits
 	}
-	if (msk < 0 || msk > 7)
-		throw std::logic_error("Assertion error");
-	this->mask = msk;
-	applyMask(msk);  // Apply the final choice of mask
-	drawFormatBits(msk);  // Overwrite old format bits
-
 	isFunction.clear();
 	isFunction.shrink_to_fit();
 }
@@ -484,26 +510,62 @@ void QrCode::drawCodewords(const vector<uint8_t> &data) {
 }
 
 
+void QrCode::drawCodewordsWide(const vector<uint8_t>& data, int msk) {
+	if (data.size() != static_cast<unsigned int>(getNumRawDataModules(version) / 8))
+		throw std::invalid_argument("Invalid argument");
+
+	int w = getWidth(), h = getHeight();
+	int ww = (w / 6) * 6, wmod6 = w % 6;
+	size_t idx = 0;
+	for (size_t y = 0; y < h; y++) {
+		int j = y % 6;
+		size_t x = 0;
+		while (x < ww) {
+			for (int i = 0; i < 6; i++) {
+				modules[y][x] = getBit(data[idx >> 3], 7 - static_cast<int>(idx & 7)) ^ MASK[msk][j][i];
+				x++;
+				idx++;
+			}
+		}
+		for (int i = 0; i < wmod6; i++) {
+			modules[y][x] = getBit(data[idx >> 3], 7 - static_cast<int>(idx & 7)) ^ MASK[msk][j][i];
+			x++;
+			idx++;
+		}
+	}
+	if (idx != data.size() * 8)
+		throw std::logic_error("Assertion error");
+}
+
+
 void QrCode::applyMask(int msk) {
 	if (msk < 0 || msk > 7)
 		throw std::domain_error("Mask value out of range");
 	size_t w = static_cast<size_t>(getWidth());
 	size_t h = static_cast<size_t>(getHeight());
-	for (size_t y = 0; y < h; y++) {
-		for (size_t x = 0; x < w; x++) {
-			bool invert;
-			switch (msk) {
-				case 0:  invert = (x + y) % 2 == 0;                    break;
-				case 1:  invert = y % 2 == 0;                          break;
-				case 2:  invert = x % 3 == 0;                          break;
-				case 3:  invert = (x + y) % 3 == 0;                    break;
-				case 4:  invert = (x / 3 + y / 2) % 2 == 0;            break;
-				case 5:  invert = x * y % 2 + x * y % 3 == 0;          break;
-				case 6:  invert = (x * y % 2 + x * y % 3) % 2 == 0;    break;
-				case 7:  invert = ((x + y) % 2 + x * y % 3) % 2 == 0;  break;
-				default:  throw std::logic_error("Assertion error");
+	int ww = (w / 6) * 6, wmod6 = w % 6;
+	if (version.wide) {
+		for (size_t y = 0; y < h; y++) {
+			int j = y % 6;
+			size_t x = 0;
+			while (x < ww) {
+				for (int i = 0; i < 6; i++) {
+					modules[y][x] = modules[y][x] ^ MASK[msk][j][i];
+					x++;
+				}
 			}
-			modules.at(y).at(x) = modules.at(y).at(x) ^ (invert & !isFunction.at(y).at(x));
+			for (int i = 0; i < wmod6; i++) {
+				modules[y][x] = modules[y][x] ^ MASK[msk][j][i];
+				x++;
+			}
+		}
+	}
+	else {
+		for (size_t y = 0; y < h; y++) {
+			for (size_t x = 0; x < w; x++) {
+				bool invert = MASK[msk][y % 6][x % 6];
+				modules[y][x] = modules[y][x] ^ (invert & !isFunction[y][x]);
+			}
 		}
 	}
 }
@@ -669,17 +731,26 @@ vector<uint8_t> QrCode::reedSolomonComputeDivisor(int degree) {
 }
 
 
-static uint8_t REED_SOLOMON_MULTIPLY[256][256];
 
 vector<uint8_t> QrCode::reedSolomonComputeRemainder(const vector<uint8_t>& data, const vector<uint8_t>& divisor) {
-	vector<uint8_t> result(divisor.size());
-	for (uint8_t b : data) {  // Polynomial division
-		uint8_t factor = b ^ result.at(0);
-		result.erase(result.begin());
-		result.push_back(0);
-		for (size_t i = 0; i < result.size(); i++)
-			result.at(i) ^= REED_SOLOMON_MULTIPLY[divisor.at(i)][factor];
+	int len = divisor.size();
+	vector<uint8_t> result(len);
+	int index = 0;
+	for (uint8_t b : data) {
+		uint8_t factor = b ^ result[index];
+		result[index] = 0;
+		index++;
+		if (index == len) index = 0;
+		int l = len - index;
+		size_t i, j;
+		for (i = 0, j = index; i < l; i++, j ++)
+			result[j] ^= REED_SOLOMON_MULTIPLY[factor][divisor[i]];
+		j = 0;
+		for (; i < len; i++, j++) {
+			result[j] ^= REED_SOLOMON_MULTIPLY[factor][divisor[i]];
+		}
 	}
+	std::rotate(result.begin(), result.begin() + index, result.end());
 	return result;
 }
 
@@ -696,15 +767,6 @@ uint8_t QrCode::reedSolomonMultiply(uint8_t x, uint8_t y) {
 		throw std::logic_error("Assertion error");
 	return static_cast<uint8_t>(z);
 }
-
-void QrCode::initialize() {
-	for (int x = 0; x < 256; x++) {
-		for (int y = 0; y < 256; y++) {
-			REED_SOLOMON_MULTIPLY[x][y] = reedSolomonMultiply(x, y);
-		}
-	}
-}
-
 
 int QrCode::finderPenaltyCountPatterns(const std::array<int,7> &runHistory) const {
 	int n = runHistory.at(1);

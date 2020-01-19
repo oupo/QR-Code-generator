@@ -42,4 +42,15 @@ void BitBuffer::appendBits(std::uint32_t val, int len) {
 		(*this)[j] = ((val >> i) & 1) != 0;
 }
 
+void BitBuffer::appendBytes(const std::vector<uint8_t>& data)
+{
+	int j = this->size();
+	this->resize(this->size() + data.size() * 8);
+	for (uint8_t val : data) {
+		for (int i = 7; i >= 0; i--) {
+			(*this)[j++] = ((val >> i) & 1) != 0;
+		}
+	}
+}
+
 }

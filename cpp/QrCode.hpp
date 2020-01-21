@@ -66,6 +66,10 @@ class QrCode final {
 	public: struct Version {
 		bool wide;
 		int version;
+		int width;
+		int height;
+		int eccLen;
+		int numBlocks;
 	};
 	
 	// Returns a value in the range 0 to 3 (unsigned 2-bit integer).
@@ -109,7 +113,7 @@ class QrCode final {
 	 */
 	public: static QrCode encodeSegments(const std::vector<QrSegment> &segs, Ecc ecl,
 		int minVersion=1, int maxVersion=40, int mask=-1, bool boostEcl=true);  // All optional parameters
-	public: static QrCode encodeSegmentsWide(const std::vector<QrSegment> &segs, int mask=0);  // All optional parameters
+	public: static QrCode encodeSegmentsWide(const std::vector<QrSegment> &segs, int mask, int width, int height, int eccLen, int numBlocks);  // All optional parameters
 	
 	
 	
@@ -333,14 +337,6 @@ class QrCode final {
 	
 	private: static const std::int8_t ECC_CODEWORDS_PER_BLOCK[4][41];
 	private: static const std::int8_t NUM_ERROR_CORRECTION_BLOCKS[4][41];
-	
-	private: static constexpr int WIDE_WIDTH = 252;
-	private: static constexpr int WIDE_HEIGHT = 94;
-	private: static constexpr int WIDE_ECC_CODEWORKS_PER_BLOCK = 30;
-	private: static constexpr int WIDE_NUM_ERROR_CORRECTION_BLOCKS = 19;
-
-	private: static const std::vector<int> WIDE_ALIGNMENT_PATTERN_POSITIONS_X;
-	private: static const std::vector<int> WIDE_ALIGNMENT_PATTERN_POSITIONS_Y;
 
 	private: static int ECCCodeworksPerBlock(Ecc ecc, Version ver);
 	private: static int NumErrorCorrectionBlocks(Ecc ecc, Version ver);

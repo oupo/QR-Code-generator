@@ -153,12 +153,12 @@ QrCode QrCode::encodeSegments(const vector<QrSegment> &segs, Ecc ecl,
 }
 
 
-QrCode QrCode::encodeSegmentsWide(const vector<QrSegment> &segs, int mask) {
+QrCode QrCode::encodeSegmentsWide(const vector<QrSegment> &segs, int mask, int width, int height, int eccLen, int numBlocks) {
 	if (mask < -1 || mask > 7)
 		throw std::invalid_argument("Invalid value");
 	
 	// Find the minimal version number to use
-	Version version = {true, 0};
+	Version version = {true, 0, width, height, eccLen, numBlocks};
 	Ecc dummyEcl = Ecc::MEDIUM;
 	int dummyVer = 40;
 	int dataCapacityBits = getNumDataCodewords(version, dummyEcl) * 8;
@@ -271,12 +271,12 @@ int QrCode::getSize() const {
 
 
 int QrCode::getWidth() const {
-	return version.wide ? WIDE_WIDTH : size;
+	return version.wide ? version.width : size;
 }
 
 
 int QrCode::getHeight() const {
-	return version.wide ? WIDE_HEIGHT : size;
+	return version.wide ? version.height : size;
 }
 
 
@@ -686,7 +686,7 @@ vector<int> QrCode::getAlignmentPatternPositionsOrig() const {
 
 int QrCode::getNumRawDataModules(Version ver) {
 	if (ver.wide) {
-		return WIDE_WIDTH * WIDE_HEIGHT;
+		return ver.width * ver.height;
 	} else {
 		if (ver.version < MIN_VERSION || ver.version > MAX_VERSION)
 			throw std::domain_error("Version number out of range");
@@ -807,7 +807,7 @@ bool QrCode::getBit(long x, int i) {
 
 int QrCode::ECCCodeworksPerBlock(Ecc ecc, Version ver) {
 	if (ver.wide) {
-		return WIDE_ECC_CODEWORKS_PER_BLOCK;
+		return ver.eccLen;
 	} else {
 		return ECC_CODEWORDS_PER_BLOCK[static_cast<int>(ecc)][ver.version];
 	}
@@ -815,7 +815,7 @@ int QrCode::ECCCodeworksPerBlock(Ecc ecc, Version ver) {
 
 int QrCode::NumErrorCorrectionBlocks(Ecc ecc, Version ver) {
 	if (ver.wide) {
-		return WIDE_NUM_ERROR_CORRECTION_BLOCKS;
+		return ver.numBlocks;
 	} else {
 		return NUM_ERROR_CORRECTION_BLOCKS[static_cast<int>(ecc)][ver.version];
 	}
@@ -846,14 +846,6 @@ const int8_t QrCode::NUM_ERROR_CORRECTION_BLOCKS[4][41] = {
 	{-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5,  5,  8,  9,  9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49},  // Medium
 	{-1, 1, 1, 2, 2, 4, 4, 6, 6, 8, 8,  8, 10, 12, 16, 12, 17, 16, 18, 21, 20, 23, 23, 25, 27, 29, 34, 34, 35, 38, 40, 43, 45, 48, 51, 53, 56, 59, 62, 65, 68},  // Quartile
 	{-1, 1, 1, 2, 4, 4, 4, 5, 6, 8, 8, 11, 11, 16, 16, 18, 16, 19, 21, 25, 25, 25, 34, 30, 32, 35, 37, 40, 42, 45, 48, 51, 54, 57, 60, 63, 66, 70, 74, 77, 81},  // High
-};
-
-const vector<int> QrCode::WIDE_ALIGNMENT_PATTERN_POSITIONS_X = {
-	
-};
-
-const vector<int> QrCode::WIDE_ALIGNMENT_PATTERN_POSITIONS_Y = {
-
 };
 
 

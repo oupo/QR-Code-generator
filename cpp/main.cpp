@@ -13,7 +13,7 @@ using std::uint8_t;
 using qrcodegen::QrCode;
 using qrcodegen::QrSegment;
 
-const int BLOCK_SIZE = 0x1200;
+const int BLOCK_SIZE = 0x900;
 
 void writeRandomData(std::vector<uint8_t>& data, uint32_t seed) {
 	data.resize(BLOCK_SIZE);
@@ -36,7 +36,7 @@ QrCode dumpQR(int blockid, uint8_t* buf, int len)
 	std::copy(buf, buf + len, vec.begin() + 4);
 	std::vector<QrSegment> segs{ QrSegment::makeEci(27), QrSegment::makeBytes(vec) };
 	int mask = 7;
-	return QrCode::encodeSegmentsWide(segs, mask);
+	return QrCode::encodeSegmentsWide(segs, mask, 252, 94, 30, 19);
 }
 
 int main() {

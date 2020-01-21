@@ -538,8 +538,8 @@ void QrCode::drawCodewordsWide(const vector<uint8_t>& data, int msk) {
 			idx++;
 		}
 	}
-	if (idx != data.size() * 8)
-		throw std::logic_error("Assertion error");
+	//if (idx != data.size() * 8)
+	//	throw std::logic_error("Assertion error");
 }
 
 
